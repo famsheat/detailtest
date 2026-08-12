@@ -25,16 +25,6 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS appointments (name TEXT, phone TEXT, car TEXT, datetime TEXT, service TEXT)")
         await db.commit()
 
-def main_kb():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
-        [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📞 Связаться с мастером")]
-    ], resize_keyboard=True)
-
-@router.message(Command("start"))
-async def start(message: Message):
-    await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
-
 # --- ЗАПИСЬ ---
 @router.message(F.text == "📅 Записаться на осмотр")
 async def show_dates(message: Message):
@@ -58,18 +48,21 @@ async def show_times(query: CallbackQuery):
 
 @router.callback_query(F.data.startswith("slot_"))
 async def book_slot(query: CallbackQuery, state: FSMContext):
-    await query.answer() # ОБЯЗАТЕЛЬНО, чтобы убрать кручение
+    await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
     async with aiosqlite.connect("crm.db") as db:
         time = await db.execute_scalar("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
         await state.update_data(datetime=time)
     
-    await query.message.answer("👤 Записал время. Как вас зовут?")
+    # ПРИНУДИТЕЛЬНО ПЕРЕКЛЮЧАЕМ СОСТОЯНИЕ
     await state.set_state(BookState.name)
+    await query.message.answer("👤 Время выбрано. Как вас зовут?")
+    logging.info(f"User {query.from_user.id} перешел в состояние BookState.name")
 
 @router.message(BookState.name)
 async def get_name(message: Message, state: FSMContext):
+    logging.info(f"Получено имя: {message.text}")
     await state.update_data(name=message.text)
     await message.answer("📱 Введите номер телефона:")
     await state.set_state(BookState.phone)
@@ -92,21 +85,12 @@ async def finish(message: Message, state: FSMContext):
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
 
-# --- ПРОЧИЕ КНОПКИ ---
-@router.message(F.text == "🖼 Галерея работ")
-async def gallery(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url="https://t.me/ledexpertkzn")]])
-    await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
-
-@router.message(F.text == "👤 Мой профиль")
-async def profile(message: Message):
-    async with aiosqlite.connect("crm.db") as db:
-        user = await db.execute_scalar("SELECT name || ', ' || car FROM users WHERE tg_id = ?", (message.from_user.id,))
-    await message.answer(f"👤 *Ваш профиль:*\n{user or 'Не заполнен'}", parse_mode="Markdown")
-
-@router.message(F.text == "📞 Связаться с мастером")
-async def contact(message: Message):
-    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
+# --- БАЗОВЫЕ КОМАНДЫ ---
+@router.message(Command("start"))
+async def start(message: Message):
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
+                                      [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📞 Связаться с мастером")]], resize_keyboard=True)
+    await message.answer("✨ Добро пожаловать!", reply_markup=kb)
 
 @router.message(Command("add"))
 async def add_slot(message: Message):
@@ -115,7 +99,7 @@ async def add_slot(message: Message):
     async with aiosqlite.connect("crm.db") as db:
         await db.execute("INSERT INTO schedule (date, time, is_booked) VALUES (?, ?, 0)", (args[1], args[2]))
         await db.commit()
-    await message.answer(f"✅ Добавлен слот: {args[1]} {args[2]}")
+    await message.answer("✅ Слот добавлен.")
 
 async def main():
     await init_db()
