@@ -1,13 +1,15 @@
 import asyncio, logging, aiosqlite
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, InputMediaPhoto, InputMediaVideo
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
+# Настройки
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
+CHANNEL_LINK = "https://t.me/твой_канал" # Вставь сюда ссылку на канал с работами
 
 logging.basicConfig(level=logging.INFO)
 router = Router()
@@ -89,16 +91,11 @@ async def finish(message: Message, state: FSMContext):
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
 
-# --- ПРОФИЛЬ И ГАЛЕРЕЯ ---
+# --- ПРОФИЛЬ И КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    # ЗАМЕНИ file_id на свои (получи их через @userinfobot, отправив ему фото)
-    media = [
-        InputMediaPhoto(media="AgACAgIAAxkBAA..."), 
-        InputMediaVideo(media="BAACAgIAAxkBAA...")
-    ]
-    try: await message.answer_media_group(media=media)
-    except: await message.answer("📸 *Галерея пока в процессе наполнения!*", parse_mode="Markdown")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал с работами 📸", url=CHANNEL_LINK)]])
+    await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
