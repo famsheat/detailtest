@@ -42,7 +42,8 @@ async def show_dates(message: Message):
     async with aiosqlite.connect("crm.db") as db:
         async with db.execute("SELECT DISTINCT date FROM schedule WHERE is_booked = 0") as cursor:
             dates = await cursor.fetchall()
-    if not dates: await message.answer("❌ Нет доступных дат.")
+    if not dates: 
+        await message.answer("❌ Нет доступных дат.")
     else:
         kb = [[InlineKeyboardButton(text=d[0], callback_data=f"date_{d[0]}")] for d in dates]
         await message.answer("📅 Выберите дату:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -62,9 +63,13 @@ async def book_slot(query: CallbackQuery, state: FSMContext):
     await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
+    
+    # ИСПРАВЛЕНО: корректное получение данных из БД
     async with aiosqlite.connect("crm.db") as db:
-        time = await db.execute_scalar("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
-        await state.update_data(datetime=time)
+        cursor = await db.execute("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
+        row = await cursor.fetchone()
+        await state.update_data(datetime=row[0] if row else "не указано")
+    
     await query.message.answer("👤 Время выбрано. Как вас зовут?")
     await state.set_state(BookState.name)
 
@@ -104,13 +109,21 @@ async def finish(message: Message, state: FSMContext):
 # --- КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    await message.answer("📸 *Наши работы:* https://t.me/ledexpertkzn", parse_mode="Markdown")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url="https://t.me/ledexpertkzn")]])
+    await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
+    # ИСПРАВЛЕНО: корректное получение данных
     async with aiosqlite.connect("crm.db") as db:
-        user = await db.execute_scalar("SELECT name || ', ' || car FROM users WHERE tg_id = ?", (message.from_user.id,))
-    await message.answer(f"👤 *Ваш профиль:*\n{user or 'Не заполнен'}", parse_mode="Markdown")
+        cursor = await db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (message.from_user.id,))
+        user = await cursor.fetchone()
+    
+    if user:
+        text = f"👤 *Ваш профиль:*\n\nИмя: {user[0]}\nТелефон: {user[1]}\nАвто: {user[2]}"
+    else:
+        text = "👤 *Ваш профиль:* данные ещё не заполнены. Запишитесь на осмотр!"
+    await message.answer(text, parse_mode="Markdown")
 
 @router.message(F.text == "📞 Связаться с мастером")
 async def contact(message: Message):
