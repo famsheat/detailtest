@@ -1,6 +1,6 @@
 import asyncio, logging, aiosqlite
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, InputMediaPhoto, InputMediaVideo
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -89,24 +89,26 @@ async def finish(message: Message, state: FSMContext):
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
 
-# --- ПРОФИЛЬ И КНОПКИ ---
+# --- ПРОФИЛЬ И ГАЛЕРЕЯ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    await message.answer("📸 *Наши работы:*\n[Здесь вы сможете посмотреть фото]", parse_mode="Markdown")
+    # ЗАМЕНИ file_id на свои (получи их через @userinfobot, отправив ему фото)
+    media = [
+        InputMediaPhoto(media="AgACAgIAAxkBAA..."), 
+        InputMediaVideo(media="BAACAgIAAxkBAA...")
+    ]
+    try: await message.answer_media_group(media=media)
+    except: await message.answer("📸 *Галерея пока в процессе наполнения!*", parse_mode="Markdown")
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
     async with aiosqlite.connect("crm.db") as db:
-        async with db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (message.from_user.id,)) as cursor:
-            user = await cursor.fetchone()
-    if user:
-        await message.answer(f"👤 *Ваш профиль:*\n\nИмя: {user[0]}\nТелефон: {user[1]}\nАвто: {user[2]}", parse_mode="Markdown")
-    else:
-        await message.answer("👤 *Ваш профиль:* данные еще не заполнены. Запишитесь на осмотр, и мы сохраним их!", parse_mode="Markdown")
+        user = await db.execute_scalar("SELECT name || ', ' || car FROM users WHERE tg_id = ?", (message.from_user.id,))
+    await message.answer(f"👤 *Ваш профиль:*\n{user or 'Не заполнен'}", parse_mode="Markdown")
 
 @router.message(F.text == "📞 Связаться с мастером")
 async def contact(message: Message):
-    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать админу: @famsheat", parse_mode="Markdown")
+    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
 
 @router.message(Command("add"))
 async def add_slot(message: Message):
