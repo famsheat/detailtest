@@ -6,10 +6,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# Настройки
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
-CHANNEL_LINK = "https://t.me/ledexpertkzn" 
+CHANNEL_LINK = "https://t.me/ledexpertkzn"
 
 logging.basicConfig(level=logging.INFO)
 router = Router()
@@ -59,6 +58,7 @@ async def show_times(query: CallbackQuery):
 
 @router.callback_query(F.data.startswith("slot_"))
 async def book_slot(query: CallbackQuery, state: FSMContext):
+    await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
     async with aiosqlite.connect("crm.db") as db:
@@ -91,7 +91,7 @@ async def finish(message: Message, state: FSMContext):
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
 
-# --- КНОПКИ ---
+# --- ПРОЧИЕ КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url=CHANNEL_LINK)]])
