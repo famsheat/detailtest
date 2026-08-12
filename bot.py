@@ -9,7 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # Настройки
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
-CHANNEL_LINK = "https://t.me/твой_канал" # Вставь сюда ссылку на канал с работами
+CHANNEL_LINK = "https://t.me/ledexpertkzn" 
 
 logging.basicConfig(level=logging.INFO)
 router = Router()
@@ -91,10 +91,10 @@ async def finish(message: Message, state: FSMContext):
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
 
-# --- ПРОФИЛЬ И КНОПКИ ---
+# --- КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал с работами 📸", url=https://t.me/ledexpertkzn)]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url=CHANNEL_LINK)]])
     await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "👤 Мой профиль")
