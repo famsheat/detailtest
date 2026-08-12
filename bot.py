@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 
-# Твой новый токен
+# Твой токен
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
 
@@ -19,28 +19,38 @@ async def init_db():
         await db.execute("CREATE TABLE IF NOT EXISTS portfolio (id INTEGER PRIMARY KEY, photo_url TEXT, description TEXT)")
         await db.commit()
 
-# --- КНОПКИ ---
+# --- КЛАВИАТУРА ---
 def main_kb():
-    return ReplyKeyboardMarkup([
-        [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
-        [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📞 Связаться с мастером")]
-    ], resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
+            [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📞 Связаться с мастером")]
+        ], 
+        resize_keyboard=True
+    )
 
 # --- ОБРАБОТЧИКИ ---
 @router.message(Command("start"))
 async def start(message: Message):
-    await message.answer("✨ *VIP-Детейлинг приветствует вас!*\n\nВыберите нужный раздел в меню:", 
-                         parse_mode="Markdown", reply_markup=main_kb())
+    await message.answer(
+        "✨ *VIP-Детейлинг приветствует вас!*\nВыберите нужный раздел в меню:", 
+        parse_mode="Markdown", 
+        reply_markup=main_kb()
+    )
 
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    # Тут можно добавить отправку фото из базы
-    await message.answer("📸 *Примеры наших работ:*\n[Тут будут фото ваших лучших проектов]", parse_mode="Markdown")
+    await message.answer("📸 *Примеры наших работ:*\n[Здесь вы сможете посмотреть фото до/после]", parse_mode="Markdown")
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
-    await message.answer("👤 *Ваш профиль:*\n\nВ разработке... Мы сохраним ваше авто для быстрой записи в будущем!", parse_mode="Markdown")
+    await message.answer("👤 *Ваш профиль:*\n\nЗдесь будет информация о вашем авто.", parse_mode="Markdown")
 
+@router.message(F.text == "📞 Связаться с мастером")
+async def contact(message: Message):
+    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nИли напишите нам напрямую: @famsheat", parse_mode="Markdown")
+
+# --- ЗАПУСК ---
 async def main():
     await init_db()
     bot = Bot(token=TOKEN)
