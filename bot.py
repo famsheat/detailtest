@@ -8,12 +8,12 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
-CHANNEL_LINK = "https://t.me/ledexpertkzn"
 
 logging.basicConfig(level=logging.INFO)
 router = Router()
 storage = MemoryStorage()
 
+# Состояния FSM
 class BookState(StatesGroup):
     name = State()
     phone = State()
@@ -33,7 +33,8 @@ def main_kb():
     ], resize_keyboard=True)
 
 @router.message(Command("start"))
-async def start(message: Message):
+async def start(message: Message, state: FSMContext):
+    await state.clear() # Сбрасываем всё при старте
     await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
 
 # --- ЗАПИСЬ ---
@@ -55,16 +56,18 @@ async def show_times(query: CallbackQuery):
             times = await cursor.fetchall()
     kb = [[InlineKeyboardButton(text=t[1], callback_data=f"slot_{t[0]}")] for t in times]
     await query.message.edit_text("🕒 Выберите время:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await query.answer()
 
 @router.callback_query(F.data.startswith("slot_"))
 async def book_slot(query: CallbackQuery, state: FSMContext):
-    await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
     async with aiosqlite.connect("crm.db") as db:
         time = await db.execute_scalar("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
         await state.update_data(datetime=time)
-    await query.message.answer("👤 Как вас зовут?")
+    
+    await query.answer()
+    await query.message.answer("👤 Записал время. Как вас зовут?")
     await state.set_state(BookState.name)
 
 @router.message(BookState.name)
@@ -94,8 +97,7 @@ async def finish(message: Message, state: FSMContext):
 # --- ПРОЧИЕ КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url=CHANNEL_LINK)]])
-    await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
+    await message.answer("📸 *Наши работы:* https://t.me/ledexpertkzn", parse_mode="Markdown")
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
