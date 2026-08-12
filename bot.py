@@ -32,15 +32,32 @@ async def init_db():
 
 def main_kb():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
-        [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📍 Наш адрес")],
-        [KeyboardButton(text="📞 Связаться с мастером")]
+        [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="🛠 Услуги")],
+        [KeyboardButton(text="👤 Мой профиль"), KeyboardButton(text="🖼 Галерея работ")],
+        [KeyboardButton(text="📍 Наш адрес"), KeyboardButton(text="📞 Связаться с мастером")]
     ], resize_keyboard=True)
 
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
+
+# --- УСЛУГИ ---
+@router.message(F.text == "🛠 Услуги")
+async def services(message: Message):
+    text = (
+        "🛠 *Наши услуги:*\n\n"
+        "✨ *Полировка фар* — от 4 000 ₽\n"
+        "Восстановим прозрачность и блеск фар.\n\n"
+        "🪞 *Полировка зеркал* — от 4 000 ₽\n"
+        "Устраняем царапины и мутность зеркал.\n\n"
+        "💎 *Полировка кузова* — от 4 000 ₽\n"
+        "Комплексная полировка ЛКП вашего авто.\n\n"
+        "💡 *Установка подсветки* — от 4 000 ₽\n"
+        "Стильная LED-подсветка салона и днища.\n\n"
+        "📅 Чтобы записаться, нажмите *«Записаться на осмотр»*."
+    )
+    await message.answer(text, parse_mode="Markdown")
 
 # --- ЗАПИСЬ ---
 @router.message(F.text == "📅 Записаться на осмотр")
@@ -69,33 +86,24 @@ async def book_slot(query: CallbackQuery, state: FSMContext):
     await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
-    
     async with aiosqlite.connect("crm.db") as db:
         cursor = await db.execute("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
         row = await cursor.fetchone()
         await state.update_data(datetime=row[0] if row else "не указано")
-        
-        # Проверяем есть ли профиль
         cursor = await db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (query.from_user.id,))
         user = await cursor.fetchone()
-    
     if user:
-        # У клиента есть профиль — предлагаем подтвердить
         await state.update_data(name=user[0], phone=user[1], car=user[2])
-        text = (f"📝 *Проверьте ваши данные:*\n\n"
-                f"👤 Имя: {user[0]}\n📱 Тел: {user[1]}\n🚗 Авто: {user[2]}\n"
-                f"📅 Время: {row[0]}\n\nВсё верно?")
+        text = (f"📝 *Проверьте ваши данные:*\n\n👤 Имя: {user[0]}\n📱 Тел: {user[1]}\n🚗 Авто: {user[2]}\n📅 Время: {row[0]}\n\nВсё верно?")
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Подтвердить запись", callback_data="confirm_book")],
             [InlineKeyboardButton(text="✏️ Ввести новые данные", callback_data="new_data")]
         ])
         await query.message.answer(text, parse_mode="Markdown", reply_markup=kb)
     else:
-        # Новый клиент — идем по цепочке вопросов
         await query.message.answer("👤 Как вас зовут?")
         await state.set_state(BookState.name)
 
-# Клиент подтверждает данные из профиля
 @router.callback_query(F.data == "confirm_book")
 async def confirm_book(query: CallbackQuery, state: FSMContext):
     await query.answer()
@@ -103,7 +111,6 @@ async def confirm_book(query: CallbackQuery, state: FSMContext):
     await save_booking(query.message, data, query.from_user.id, query.bot)
     await state.clear()
 
-# Клиент хочет обновить данные
 @router.callback_query(F.data == "new_data")
 async def new_data(query: CallbackQuery, state: FSMContext):
     await query.answer()
@@ -128,7 +135,6 @@ async def finish(message: Message, state: FSMContext):
     await save_booking(message, data, message.from_user.id, message.bot)
     await state.clear()
 
-# Универсальная функция сохранения записи
 async def save_booking(message, data, tg_id, bot):
     async with aiosqlite.connect("crm.db") as db:
         await db.execute("UPDATE schedule SET is_booked = 1 WHERE id = ?", (data['slot_id'],))
@@ -138,15 +144,11 @@ async def save_booking(message, data, tg_id, bot):
                          (data['name'], data['phone'], data['car'], data['datetime'], "Осмотр"))
         await db.commit()
     
-    msg = (f"🎉 *Запись подтверждена!*\n\n"
-           f"👤 Имя: {data['name']}\n📱 Тел: {data['phone']}\n"
-           f"🚗 Авто: {data['car']}\n📅 Время: {data['datetime']}\n\n"
-           f"📍 Ждем вас: *{ADDRESS}*\n[🗺 Открыть карту]({MAP_LINK})")
+    msg = (f"🎉 *Запись подтверждена!*\n\n👤 Имя: {data['name']}\n📱 Тел: {data['phone']}\n"
+           f"🚗 Авто: {data['car']}\n📅 Время: {data['datetime']}\n\n📍 Ждем вас: *{ADDRESS}*\n[🗺 Открыть карту]({MAP_LINK})")
     await message.answer(msg, parse_mode="Markdown")
     
-    admin_msg = (f"🔔 *НОВАЯ ЗАПИСЬ!*\n\n👤 {data['name']}\n📱 `{data['phone']}`\n"
-                 f"🚗 {data['car']}\n📅 *{data['datetime']}*\n\n"
-                 f"💬 [Написать клиенту](tg://user?id={tg_id})")
+    admin_msg = (f"🔔 *НОВАЯ ЗАПИСЬ!*\n\n👤 {data['name']}\n📱 `{data['phone']}`\n🚗 {data['car']}\n📅 *{data['datetime']}*\n\n💬 [Написать клиенту](tg://user?id={tg_id})")
     await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
 
 # --- ПРОФИЛЬ ---
