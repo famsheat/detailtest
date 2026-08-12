@@ -13,7 +13,6 @@ logging.basicConfig(level=logging.INFO)
 router = Router()
 storage = MemoryStorage()
 
-# Состояния FSM
 class BookState(StatesGroup):
     name = State()
     phone = State()
@@ -33,8 +32,7 @@ def main_kb():
     ], resize_keyboard=True)
 
 @router.message(Command("start"))
-async def start(message: Message, state: FSMContext):
-    await state.clear() # Сбрасываем всё при старте
+async def start(message: Message):
     await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
 
 # --- ЗАПИСЬ ---
@@ -50,23 +48,23 @@ async def show_dates(message: Message):
 
 @router.callback_query(F.data.startswith("date_"))
 async def show_times(query: CallbackQuery):
+    await query.answer()
     date = query.data.split("_")[1]
     async with aiosqlite.connect("crm.db") as db:
         async with db.execute("SELECT id, time FROM schedule WHERE date = ? AND is_booked = 0", (date,)) as cursor:
             times = await cursor.fetchall()
     kb = [[InlineKeyboardButton(text=t[1], callback_data=f"slot_{t[0]}")] for t in times]
     await query.message.edit_text("🕒 Выберите время:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-    await query.answer()
 
 @router.callback_query(F.data.startswith("slot_"))
 async def book_slot(query: CallbackQuery, state: FSMContext):
+    await query.answer() # ОБЯЗАТЕЛЬНО, чтобы убрать кручение
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
     async with aiosqlite.connect("crm.db") as db:
         time = await db.execute_scalar("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
         await state.update_data(datetime=time)
     
-    await query.answer()
     await query.message.answer("👤 Записал время. Как вас зовут?")
     await state.set_state(BookState.name)
 
@@ -97,7 +95,8 @@ async def finish(message: Message, state: FSMContext):
 # --- ПРОЧИЕ КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    await message.answer("📸 *Наши работы:* https://t.me/ledexpertkzn", parse_mode="Markdown")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url="https://t.me/ledexpertkzn")]])
+    await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
