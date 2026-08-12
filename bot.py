@@ -33,8 +33,9 @@ def main_kb():
 
 @router.message(Command("start"))
 async def start(message: Message):
-    await message.answer("✨ *VIP-Детейлинг*\n\nВыберите действие в меню:", parse_mode="Markdown", reply_markup=main_kb())
+    await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие в меню:", parse_mode="Markdown", reply_markup=main_kb())
 
+# --- ЗАПИСЬ ---
 @router.message(F.text == "📅 Записаться на осмотр")
 async def show_dates(message: Message):
     async with aiosqlite.connect("crm.db") as db:
@@ -67,13 +68,13 @@ async def book_slot(query: CallbackQuery, state: FSMContext):
 @router.message(BookState.name)
 async def get_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("📱 Введите ваш номер телефона:")
+    await message.answer("📱 Введите номер телефона:")
     await state.set_state(BookState.phone)
 
 @router.message(BookState.phone)
 async def get_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.text)
-    await message.answer("🚗 Марка и модель вашего авто:")
+    await message.answer("🚗 Марка и модель авто:")
     await state.set_state(BookState.car)
 
 @router.message(BookState.car)
@@ -85,14 +86,23 @@ async def finish(message: Message, state: FSMContext):
         await db.execute("INSERT INTO appointments VALUES (?, ?, ?, ?, ?, ?)", (data['name'], data['phone'], data['car'], data['datetime'], "Осмотр", 4000))
         await db.commit()
     await message.answer("🎉 Запись подтверждена!")
-    await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['datetime']}", parse_mode="Markdown")
+    await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
     await state.clear()
+
+# --- ПРОФИЛЬ И КНОПКИ ---
+@router.message(F.text == "🖼 Галерея работ")
+async def gallery(message: Message):
+    await message.answer("📸 *Наши работы:* [здесь будут фото]", parse_mode="Markdown")
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
     async with aiosqlite.connect("crm.db") as db:
         user = await db.execute_scalar("SELECT name || ', ' || car FROM users WHERE tg_id = ?", (message.from_user.id,))
     await message.answer(f"👤 *Ваш профиль:* {user or 'Не заполнен'}", parse_mode="Markdown")
+
+@router.message(F.text == "📞 Связаться с мастером")
+async def contact(message: Message):
+    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
 
 @router.message(Command("add"))
 async def add_slot(message: Message):
@@ -102,18 +112,6 @@ async def add_slot(message: Message):
         await db.execute("INSERT INTO schedule (date, time, is_booked) VALUES (?, ?, 0)", (args[1], args[2]))
         await db.commit()
     await message.answer(f"✅ Добавлен слот: {args[1]} {args[2]}")
-
-@router.message(Command("send"))
-async def send_promo(message: Message):
-    if message.from_user.id != ADMIN_ID: return
-    text = message.text.replace("/send ", "")
-    async with aiosqlite.connect("crm.db") as db:
-        async with db.execute("SELECT tg_id FROM users") as cursor:
-            users = await cursor.fetchall()
-            for u in users:
-                try: await message.bot.send_message(u[0], text)
-                except: continue
-    await message.answer("✅ Рассылка завершена.")
 
 async def main():
     await init_db()
