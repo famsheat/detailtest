@@ -94,7 +94,7 @@ async def finish(message: Message, state: FSMContext):
 # --- ПРОФИЛЬ И КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал с работами 📸", url=CHANNEL_LINK)]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал с работами 📸", url=https://t.me/ledexpertkzn)]])
     await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "👤 Мой профиль")
