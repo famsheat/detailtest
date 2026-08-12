@@ -33,7 +33,7 @@ def main_kb():
 
 @router.message(Command("start"))
 async def start(message: Message):
-    await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие в меню:", parse_mode="Markdown", reply_markup=main_kb())
+    await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
 
 # --- ЗАПИСЬ ---
 @router.message(F.text == "📅 Записаться на осмотр")
@@ -83,7 +83,7 @@ async def finish(message: Message, state: FSMContext):
     async with aiosqlite.connect("crm.db") as db:
         await db.execute("UPDATE schedule SET is_booked = 1 WHERE id = ?", (data['slot_id'],))
         await db.execute("INSERT OR REPLACE INTO users (tg_id, name, phone, car) VALUES (?, ?, ?, ?)", (message.from_user.id, data['name'], data['phone'], data['car']))
-        await db.execute("INSERT INTO appointments VALUES (?, ?, ?, ?, ?, ?)", (data['name'], data['phone'], data['car'], data['datetime'], "Осмотр", 4000))
+        await db.execute("INSERT INTO appointments VALUES (?, ?, ?, ?, ?, ?)", (data['name'], data['phone'], data['car'], data['datetime'], "Осмотр", "4000₽"))
         await db.commit()
     await message.answer("🎉 Запись подтверждена!")
     await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n{data['name']}, {data['phone']}, {data['car']}, {data['datetime']}", parse_mode="Markdown")
@@ -92,17 +92,21 @@ async def finish(message: Message, state: FSMContext):
 # --- ПРОФИЛЬ И КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    await message.answer("📸 *Наши работы:* [здесь будут фото]", parse_mode="Markdown")
+    await message.answer("📸 *Наши работы:*\n[Здесь вы сможете посмотреть фото]", parse_mode="Markdown")
 
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message):
     async with aiosqlite.connect("crm.db") as db:
-        user = await db.execute_scalar("SELECT name || ', ' || car FROM users WHERE tg_id = ?", (message.from_user.id,))
-    await message.answer(f"👤 *Ваш профиль:* {user or 'Не заполнен'}", parse_mode="Markdown")
+        async with db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (message.from_user.id,)) as cursor:
+            user = await cursor.fetchone()
+    if user:
+        await message.answer(f"👤 *Ваш профиль:*\n\nИмя: {user[0]}\nТелефон: {user[1]}\nАвто: {user[2]}", parse_mode="Markdown")
+    else:
+        await message.answer("👤 *Ваш профиль:* данные еще не заполнены. Запишитесь на осмотр, и мы сохраним их!", parse_mode="Markdown")
 
 @router.message(F.text == "📞 Связаться с мастером")
 async def contact(message: Message):
-    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
+    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать админу: @famsheat", parse_mode="Markdown")
 
 @router.message(Command("add"))
 async def add_slot(message: Message):
