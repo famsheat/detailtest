@@ -1,92 +1,74 @@
-import asyncio
-import logging
-import aiosqlite
+import asyncio, logging, aiosqlite
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
 ADMIN_ID = 5006344380
 
-logging.basicConfig(level=logging.INFO)
 router = Router()
-storage = MemoryStorage()
 
-# Состояния записи
 class BookState(StatesGroup):
-    waiting_for_name = State()
-    waiting_for_phone = State()
-    waiting_for_car = State()
+    choosing_date = State()
+    choosing_time = State()
+    name = State()
+    phone = State()
+    car = State()
 
 async def init_db():
     async with aiosqlite.connect("crm.db") as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER PRIMARY KEY, name TEXT, phone TEXT, car TEXT)")
+        await db.execute("CREATE TABLE IF NOT EXISTS schedule (id INTEGER PRIMARY KEY, date TEXT, time TEXT, is_booked INTEGER DEFAULT 0)")
+        await db.execute("CREATE TABLE IF NOT EXISTS users (tg_id INTEGER, name TEXT, phone TEXT, car TEXT, datetime TEXT)")
         await db.commit()
 
-def main_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📅 Записаться на осмотр"), KeyboardButton(text="👤 Мой профиль")],
-            [KeyboardButton(text="🖼 Галерея работ"), KeyboardButton(text="📞 Связаться с мастером")]
-        ], 
-        resize_keyboard=True
-    )
+# --- АДМИН: Добавление слота ---
+@router.message(Command("add_slot"))
+async def add_slot(message: Message):
+    if message.from_user.id != ADMIN_ID: return
+    args = message.text.split(" ") # /add_slot 25.10 14:00
+    await db_exec("INSERT INTO schedule (date, time, is_booked) VALUES (?, ?, 0)", (args[1], args[2]))
+    await message.answer(f"✅ Добавлен слот: {args[1]} в {args[2]}")
 
-@router.message(Command("start"))
-async def start(message: Message):
-    await message.answer("✨ *VIP-Детейлинг приветствует вас!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
-
-# --- ЛОГИКА ЗАПИСИ ---
+# --- КЛИЕНТ: Выбор даты ---
 @router.message(F.text == "📅 Записаться на осмотр")
-async def start_booking(message: Message, state: FSMContext):
-    await message.answer("👤 *Давайте начнем!* Как к вам обращаться?", parse_mode="Markdown")
-    await state.set_state(BookState.waiting_for_name)
-
-@router.message(BookState.waiting_for_name)
-async def get_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await message.answer("📱 Введите ваш номер телефона:")
-    await state.set_state(BookState.waiting_for_phone)
-
-@router.message(BookState.waiting_for_phone)
-async def get_phone(message: Message, state: FSMContext):
-    await state.update_data(phone=message.text)
-    await message.answer("🚗 Укажите марку и модель вашего автомобиля:")
-    await state.set_state(BookState.waiting_for_car)
-
-@router.message(BookState.waiting_for_car)
-async def get_car(message: Message, state: FSMContext):
-    data = await state.update_data(car=message.text)
+async def show_dates(message: Message, state: FSMContext):
     async with aiosqlite.connect("crm.db") as db:
-        await db.execute("INSERT OR REPLACE INTO users (tg_id, name, phone, car) VALUES (?, ?, ?, ?)", 
-                         (message.from_user.id, data['name'], data['phone'], data['car']))
+        async with db.execute("SELECT DISTINCT date FROM schedule WHERE is_booked = 0") as cursor:
+            dates = await cursor.fetchall()
+    kb = [[InlineKeyboardButton(text=d[0], callback_data=f"date_{d[0]}")] for d in dates]
+    await message.answer("📅 Выберите дату:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+# --- КЛИЕНТ: Выбор времени ---
+@router.callback_query(F.data.startswith("date_"))
+async def show_times(query: CallbackQuery, state: FSMContext):
+    date = query.data.split("_")[1]
+    await state.update_data(date=date)
+    async with aiosqlite.connect("crm.db") as db:
+        async with db.execute("SELECT id, time FROM schedule WHERE date = ? AND is_booked = 0", (date,)) as cursor:
+            times = await cursor.fetchall()
+    kb = [[InlineKeyboardButton(text=t[1], callback_data=f"slot_{t[0]}")] for t in times]
+    await query.message.edit_text("🕒 Выберите время:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+# --- ЗАПИСЬ ---
+@router.callback_query(F.data.startswith("slot_"))
+async def book_slot(query: CallbackQuery, state: FSMContext):
+    slot_id = query.data.split("_")[1]
+    await state.update_data(slot_id=slot_id)
+    # БРОНИРУЕМ СРАЗУ, чтобы никто другой не занял
+    async with aiosqlite.connect("crm.db") as db:
+        await db.execute("UPDATE schedule SET is_booked = 1 WHERE id = ?", (slot_id,))
         await db.commit()
-    
-    msg = f"✅ *Отлично, {data['name']}!*\nМы записали вас на осмотр.\n\n👤 Имя: {data['name']}\n📱 Телефон: {data['phone']}\n🚗 Авто: {data['car']}"
-    await message.answer(msg, parse_mode="Markdown", reply_markup=main_kb())
-    await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись на осмотр!*\n\n{msg}", parse_mode="Markdown")
-    await state.clear()
+    await query.message.answer("👤 Как вас зовут?")
+    await state.set_state(BookState.name)
 
-# --- ПРОЧИЕ КНОПКИ ---
-@router.message(F.text == "🖼 Галерея работ")
-async def gallery(message: Message):
-    await message.answer("📸 *Наши работы:* [здесь будут фото]", parse_mode="Markdown")
-
-@router.message(F.text == "👤 Мой профиль")
-async def profile(message: Message):
-    await message.answer("👤 *Ваш профиль:* ...", parse_mode="Markdown")
-
-@router.message(F.text == "📞 Связаться с мастером")
-async def contact(message: Message):
-    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
+# ... (далее функции получения name, phone, car и сохранение в users)
 
 async def main():
     await init_db()
     bot = Bot(token=TOKEN)
-    dp = Dispatcher(storage=storage)
+    dp = Dispatcher()
     dp.include_router(router)
     await dp.start_polling(bot)
 
