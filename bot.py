@@ -13,7 +13,14 @@ logging.basicConfig(level=logging.INFO)
 router = Router()
 storage = MemoryStorage()
 
+# Состояния для записи
 class BookState(StatesGroup):
+    name = State()
+    phone = State()
+    car = State()
+
+# Состояния для редактирования профиля
+class EditState(StatesGroup):
     name = State()
     phone = State()
     car = State()
@@ -63,13 +70,10 @@ async def book_slot(query: CallbackQuery, state: FSMContext):
     await query.answer()
     slot_id = query.data.split("_")[1]
     await state.update_data(slot_id=slot_id)
-    
-    # ИСПРАВЛЕНО: корректное получение данных из БД
     async with aiosqlite.connect("crm.db") as db:
         cursor = await db.execute("SELECT date || ' в ' || time FROM schedule WHERE id = ?", (slot_id,))
         row = await cursor.fetchone()
         await state.update_data(datetime=row[0] if row else "не указано")
-    
     await query.message.answer("👤 Время выбрано. Как вас зовут?")
     await state.set_state(BookState.name)
 
@@ -101,29 +105,60 @@ async def finish(message: Message, state: FSMContext):
     msg = (f"🎉 *Запись подтверждена!*\n\n"
            f"👤 Имя: {data['name']}\n📱 Тел: {data['phone']}\n"
            f"🚗 Авто: {user_car}\n📅 Время: {data['datetime']}")
-    
     await message.answer(msg, parse_mode="Markdown")
-    await message.bot.send_message(ADMIN_ID, f"🔔 *Новая запись!*\n\n{msg}", parse_mode="Markdown")
+    
+    # УВЕДОМЛЕНИЕ АДМИНУ (расширенное)
+    admin_msg = (f"🔔 *НОВАЯ ЗАПИСЬ!* 🔔\n\n"
+                 f"👤 Клиент: {data['name']}\n"
+                 f"📱 Тел: `{data['phone']}`\n"
+                 f"🚗 Авто: {user_car}\n"
+                 f"📅 Время визита: *{data['datetime']}*\n\n"
+                 f"💬 Написать клиенту: [Ссылка](tg://user?id={message.from_user.id})")
+    await message.bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
     await state.clear()
 
-# --- КНОПКИ ---
+# --- ПРОФИЛЬ И РЕДАКТИРОВАНИЕ ---
+@router.message(F.text == "👤 Мой профиль")
+async def profile(message: Message, state: FSMContext):
+    await state.clear() # Сбрасываем зависшие состояния
+    async with aiosqlite.connect("crm.db") as db:
+        cursor = await db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (message.from_user.id,))
+        user = await cursor.fetchone()
+    if user:
+        text = f"👤 *Ваш профиль:*\n\nИмя: {user[0]}\nТелефон: {user[1]}\nАвто: {user[2]}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Изменить имя", callback_data="edit_name")],
+            [InlineKeyboardButton(text="📱 Изменить телефон", callback_data="edit_phone")],
+            [InlineKeyboardButton(text="🚗 Изменить авто", callback_data="edit_car")]
+        ])
+        await message.answer(text, parse_mode="Markdown", reply_markup=kb)
+    else:
+        await message.answer("👤 Данные пусты. Запишитесь на осмотр, чтобы сохранить профиль.")
+
+@router.callback_query(F.data.startswith("edit_"))
+async def edit_profile(query: CallbackQuery, state: FSMContext):
+    await query.answer()
+    field = query.data.split("_")[1]
+    await state.update_data(field=field)
+    prompts = {"name": "Введите новое имя:", "phone": "Введите новый телефон:", "car": "Введите новую марку и модель авто:"}
+    await query.message.answer(prompts[field])
+    await state.set_state(EditState.name) # Единое состояние для сохранения
+
+@router.message(StateFilter(EditState.name))
+async def save_edit(message: Message, state: FSMContext):
+    data = await state.get_data()
+    field = data['field']
+    async with aiosqlite.connect("crm.db") as db:
+        await db.execute(f"UPDATE users SET {field} = ? WHERE tg_id = ?", (message.text, message.from_user.id))
+        await db.commit()
+    await message.answer(f"✅ Ваш(е) {field} успешно обновлено!")
+    await state.clear()
+
+# --- ПРОЧИЕ КНОПКИ ---
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url="https://t.me/ledexpertkzn")]])
     await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
-
-@router.message(F.text == "👤 Мой профиль")
-async def profile(message: Message):
-    # ИСПРАВЛЕНО: корректное получение данных
-    async with aiosqlite.connect("crm.db") as db:
-        cursor = await db.execute("SELECT name, phone, car FROM users WHERE tg_id = ?", (message.from_user.id,))
-        user = await cursor.fetchone()
-    
-    if user:
-        text = f"👤 *Ваш профиль:*\n\nИмя: {user[0]}\nТелефон: {user[1]}\nАвто: {user[2]}"
-    else:
-        text = "👤 *Ваш профиль:* данные ещё не заполнены. Запишитесь на осмотр!"
-    await message.answer(text, parse_mode="Markdown")
 
 @router.message(F.text == "📞 Связаться с мастером")
 async def contact(message: Message):
