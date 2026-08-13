@@ -6,10 +6,27 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
-TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"
-ADMIN_ID = 5006344380
-ADDRESS = "г. Казань, ул. Аделя Кутуя, 110дк4"
-MAP_LINK = "https://yandex.ru/maps/?text=Казань%2C%20улица%20Аделя%20Кутуя%2C%20110дк4"
+# ============ ⚙️ НАСТРОЙКИ БИЗНЕСА ============
+# Меняй только эти строки, весь остальной код не трогай!
+
+TOKEN = "8994773003:AAHqmGBN_HEyOHkH18DF9uXmigfigWUvfSc"  # Токен от @BotFather
+ADMIN_ID = 5006344380  # Твой Telegram ID (узнать через @userinfobot)
+BUSINESS_NAME = "VIP-Детейлинг"  # Название бизнеса
+ADDRESS = "г. Казань, ул. Аделя Кутуя, 110дк4"  # Адрес
+MAP_LINK = "https://yandex.ru/maps/?text=Казань%2C%20улица%20Аделя%20Кутуя%2C%20110дк4"  # Ссылка на карту
+GALLERY_LINK = "https://t.me/ledexpertkzn"  # Канал с работами
+PHONE = "+7 (XXX) XXX-XX-XX"  # Телефон
+CONTACT_USERNAME = "@famsheat"  # Юзернейм для связи
+
+# Услуги (добавляй/убирай сколько хочешь)
+SERVICES = {
+    "✨ Полировка фар": "от 4 000 ₽",
+    "🪞 Полировка зеркал": "от 4 000 ₽",
+    "💎 Полировка кузова": "от 4 000 ₽",
+    "💡 Установка подсветки": "от 4 000 ₽"
+}
+
+# =============================================
 
 logging.basicConfig(level=logging.INFO)
 router = Router()
@@ -40,26 +57,16 @@ def main_kb():
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("✨ *VIP-Детейлинг приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
+    await message.answer(f"✨ *{BUSINESS_NAME} приветствует!*\nВыберите действие:", parse_mode="Markdown", reply_markup=main_kb())
 
-# --- УСЛУГИ ---
 @router.message(F.text == "🛠 Услуги")
 async def services(message: Message):
-    text = (
-        "🛠 *Наши услуги:*\n\n"
-        "✨ *Полировка фар* — от 4 000 ₽\n"
-        "Восстановим прозрачность и блеск фар.\n\n"
-        "🪞 *Полировка зеркал* — от 4 000 ₽\n"
-        "Устраняем царапины и мутность зеркал.\n\n"
-        "💎 *Полировка кузова* — от 4 000 ₽\n"
-        "Комплексная полировка ЛКП вашего авто.\n\n"
-        "💡 *Установка подсветки* — от 4 000 ₽\n"
-        "Стильная LED-подсветка салона и днища.\n\n"
-        "📅 Чтобы записаться, нажмите *«Записаться на осмотр»*."
-    )
+    text = "🛠 *Наши услуги:*\n\n"
+    for name, price in SERVICES.items():
+        text += f"{name} — *{price}*\n"
+    text += "\n📅 Чтобы записаться, нажмите *«Записаться на осмотр»*."
     await message.answer(text, parse_mode="Markdown")
 
-# --- ЗАПИСЬ ---
 @router.message(F.text == "📅 Записаться на осмотр")
 async def show_dates(message: Message):
     async with aiosqlite.connect("crm.db") as db:
@@ -144,14 +151,13 @@ async def save_booking(message, data, tg_id, bot):
                          (data['name'], data['phone'], data['car'], data['datetime'], "Осмотр"))
         await db.commit()
     
-    msg = (f"🎉 *Запись подтверждена!*\n\n👤 Имя: {data['name']}\n📱 Тел: {data['phone']}\n"
+    msg = (f"🎉 *Запись в {BUSINESS_NAME} подтверждена!*\n\n👤 Имя: {data['name']}\n📱 Тел: {data['phone']}\n"
            f"🚗 Авто: {data['car']}\n📅 Время: {data['datetime']}\n\n📍 Ждем вас: *{ADDRESS}*\n[🗺 Открыть карту]({MAP_LINK})")
     await message.answer(msg, parse_mode="Markdown")
     
     admin_msg = (f"🔔 *НОВАЯ ЗАПИСЬ!*\n\n👤 {data['name']}\n📱 `{data['phone']}`\n🚗 {data['car']}\n📅 *{data['datetime']}*\n\n💬 [Написать клиенту](tg://user?id={tg_id})")
     await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
 
-# --- ПРОФИЛЬ ---
 @router.message(F.text == "👤 Мой профиль")
 async def profile(message: Message, state: FSMContext):
     await state.clear()
@@ -188,7 +194,6 @@ async def save_edit(message: Message, state: FSMContext):
     await message.answer("✅ Обновлено!")
     await state.clear()
 
-# --- ПРОЧИЕ КНОПКИ ---
 @router.message(F.text == "📍 Наш адрес")
 async def address(message: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗺 Открыть карту", url=MAP_LINK)]])
@@ -196,12 +201,12 @@ async def address(message: Message):
 
 @router.message(F.text == "🖼 Галерея работ")
 async def gallery(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url="https://t.me/ledexpertkzn")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Перейти в канал 📸", url=GALLERY_LINK)]])
     await message.answer("📸 *Наши работы:*", parse_mode="Markdown", reply_markup=kb)
 
 @router.message(F.text == "📞 Связаться с мастером")
 async def contact(message: Message):
-    await message.answer("📞 *Наш телефон:* +7 (XXX) XXX-XX-XX\nНаписать: @famsheat", parse_mode="Markdown")
+    await message.answer(f"📞 *Наш телефон:* {PHONE}\nНаписать: {CONTACT_USERNAME}", parse_mode="Markdown")
 
 @router.message(Command("add"))
 async def add_slot(message: Message):
